@@ -38,6 +38,7 @@
 #include "clipboard.h"
 #include "historymodel.h"
 #include "notificationmanager.h"
+#include "pipewirecamera.h"
 
 static void processCommandLine(const QCommandLineParser &parser, Qrca &qrca)
 {
@@ -133,6 +134,7 @@ Q_DECL_EXPORT int main(int argc, char *argv[])
 
         return new HistoryModel();
     });
+    qmlRegisterType<PipeWireCamera>("org.kde.qrca", 1, 0, "PipeWireCamera");
     qRegisterMetaType<QrCodeContent>();
 
     Qrca qrca;

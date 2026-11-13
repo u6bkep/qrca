@@ -9,6 +9,9 @@ endif()
 if (TARGET KF6::NetworkManagerQt)
     set(HAVE_NETWORKMANAGER TRUE)
 endif()
+if (TARGET PkgConfig::PipeWire)
+    set(HAVE_PIPEWIRE TRUE)
+endif()
 configure_file(config-qrca.h.in ${CMAKE_CURRENT_BINARY_DIR}/config-qrca.h)
 
 set(qrca_SRCS
@@ -18,12 +21,14 @@ set(qrca_SRCS
     notificationmanager.cpp
     clipboard.cpp
     historymodel.cpp
+    pipewirecamera.cpp
 )
 
 add_executable(qrca ${qrca_SRCS})
 
 if (TARGET Qt6::DBus)
     target_sources(qrca PRIVATE activitymanager.cpp)
+    target_link_libraries(qrca PRIVATE Qt::DBus)
 endif()
 
 ecm_add_qml_module(qrca URI "org.kde.qrca" VERSION 1.0)
@@ -45,6 +50,10 @@ target_link_libraries(qrca PRIVATE Qt::Core Qt::Qml Qt::Quick Qt::QuickControls2
 
 if (TARGET KF6::NetworkManagerQt)
     target_link_libraries(qrca PRIVATE KF6::NetworkManagerQt)
+endif()
+
+if (TARGET PkgConfig::PipeWire)
+    target_link_libraries(qrca PRIVATE PkgConfig::PipeWire)
 endif()
 
 if (NOT ANDROID)

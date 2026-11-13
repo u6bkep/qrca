@@ -48,6 +48,14 @@ if(NOT ANDROID)
     find_package(KF6 ${KF_MIN_VERSION} OPTIONAL_COMPONENTS NetworkManagerQt)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+    find_package(PkgConfig)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(PipeWire IMPORTED_TARGET libpipewire-0.3>=0.3.64)
+    endif()
+    add_feature_info(PipeWire PipeWire_FOUND "Camera capture through PipeWire and the camera portal (needed for libcamera/ISP cameras)")
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

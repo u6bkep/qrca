@@ -25,13 +25,18 @@ Kirigami.Page {
     topPadding: 0
     bottomPadding: 0
     property bool windowActive: Controls.ApplicationWindow.window.active
+    // Whether the page wants a live camera; drives whichever backend is in use
+    property bool cameraWanted: true
+    // Prefer PipeWire (required for libcamera/ISP cameras and the camera portal); fall back to
+    // QtMultimedia's own camera backend when PipeWire has no cameras or isn't built in.
+    readonly property bool usePipeWire: pwCamera.status !== PipeWireCamera.Unavailable
 
     onWindowActiveChanged: {
         // Deactivate camera on mobile, if the window is inactive
         if (!Kirigami.Settings.isMobile)
             return;
         if (scanner.windowActive) {
-            camera.start();
+            scanner.cameraWanted = true;
             deactivateCamera.running = false;
         } else {
             deactivateCamera.running = true;
@@ -39,11 +44,7 @@ Kirigami.Page {
     }
 
     onIsCurrentPageChanged: {
-        if (isCurrentPage) {
-            camera.start();
-        } else {
-            camera.stop();
-        }
+        scanner.cameraWanted = isCurrentPage;
     }
 
     Timer {
@@ -53,7 +54,7 @@ Kirigami.Page {
         running: false
         triggeredOnStart: false
         onTriggered: {
-            camera.stop();
+            scanner.cameraWanted = false;
         }
     }
 
@@ -64,12 +65,12 @@ Kirigami.Page {
             text: i18n("Light")
             checkable: true
             checked: camera.torchMode == Camera.TorchOn
-            visible: camera.isTorchModeSupported(Camera.TorchOn)
+            visible: !scanner.usePipeWire && camera.isTorchModeSupported(Camera.TorchOn)
             onTriggered: camera.torchMode = (camera.torchMode == Camera.TorchOn ? Camera.TorchOff : Camera.TorchOn)
         },
         Kirigami.Action {
             text: i18n("Select Camera")
-            visible: devices.videoInputs.length > 1
+            visible: (scanner.usePipeWire ? pwCamera.cameras.length : devices.videoInputs.length) > 1
             icon.name: "camera-video-symbolic"
             onTriggered: cameraSelectorSheet.open()
         },
@@ -78,7 +79,7 @@ Kirigami.Page {
             text: i18n("Open Image")
             onTriggered: {
                 openFileDialog.open();
-                camera.active = false;
+                scanner.cameraWanted = false;
             }
         },
         Kirigami.Action {
@@ -96,7 +97,7 @@ Kirigami.Page {
         id: permission
         onStatusChanged: {
             if (status == Qt.PermissionStatus.Granted) {
-                camera.start();
+                scanner.cameraWanted = true;
             }
         }
     }
@@ -121,15 +122,19 @@ Kirigami.Page {
         }
 
         ListView {
-            model: devices.videoInputs
+            model: scanner.usePipeWire ? pwCamera.cameras : devices.videoInputs
             implicitWidth: Kirigami.Units.gridUnit * 20
 
             delegate: Controls.ItemDelegate {
                 text: modelData.description
                 width: ListView.view.width
                 onClicked: {
-                    camera.cameraDevice = modelData;
-                    camera.start();
+                    if (scanner.usePipeWire) {
+                        pwCamera.cameraId = modelData.id;
+                    } else {
+                        camera.cameraDevice = modelData;
+                    }
+                    scanner.cameraWanted = true;
                     cameraSelectorSheet.close();
                     scanner_settings.camera_id = modelData.id;
                 }
@@ -141,7 +146,7 @@ Kirigami.Page {
         id: viewfinder
         anchors.fill: parent
         fillMode: VideoOutput.PreserveAspectCrop
-        visible: camera.error === Camera.NoError
+        visible: scanner.usePipeWire ? pwCamera.errorString === "" : camera.error === Camera.NoError
 
         Component.onCompleted: {
             // TODO Set it directly once we depend on Qt 6.9
@@ -173,18 +178,25 @@ Kirigami.Page {
         videoSink: viewfinder.videoSink
     }
 
+    PipeWireCamera {
+        id: pwCamera
+        active: scanner.usePipeWire && scanner.cameraWanted
+        videoSink: viewfinder.videoSink
+    }
+
     CaptureSession {
         id: captureSession
         camera: Camera {
             id: camera
-            active: true
+            active: !scanner.usePipeWire && scanner.cameraWanted
         }
-        videoOutput: viewfinder
+        // Leave the viewfinder's sink to PipeWireCamera when it is in charge
+        videoOutput: scanner.usePipeWire ? null : viewfinder
     }
 
     Kirigami.PlaceholderMessage {
-        text: camera.errorString
-        visible: camera.error != Camera.NoError
+        text: scanner.usePipeWire ? pwCamera.errorString : camera.errorString
+        visible: scanner.usePipeWire ? pwCamera.errorString !== "" : camera.error != Camera.NoError
         anchors.fill: parent
     }
 
@@ -198,6 +210,7 @@ Kirigami.Page {
             permission.request();
 
         // Try to restore the previously selected camera
+        pwCamera.cameraId = scanner_settings.camera_id;
         for (let i = 0; i < devices.videoInputs.length; i++) {
             if (devices.videoInputs[i].id == scanner_settings.camera_id) {
                 camera.cameraDevice = devices.videoInputs[i];
@@ -214,7 +227,7 @@ Kirigami.Page {
             selectedImage.source = openFileDialog.currentFile;
             viewfinder.visible = false;
             selectedImage.visible = true;
-            camera.active = false;
+            scanner.cameraWanted = false;
 
             const result = Qrca.scanImage(openFileDialog.currentFile);
             if (result.hasContent) {
@@ -227,11 +240,11 @@ Kirigami.Page {
                 selectedImage.source = "";
                 selectedImage.visible = false;
                 viewfinder.visible = true;
-                camera.active = true;
+                scanner.cameraWanted = true;
             }
         }
         onRejected: {
-            camera.active = true;
+            scanner.cameraWanted = true;
         }
     }
 
@@ -252,7 +265,7 @@ Kirigami.Page {
                 selectedImage.source = "";
                 selectedImage.visible = false;
                 viewfinder.visible = true;
-                camera.active = true;
+                scanner.cameraWanted = true;
             }
         }
     }
